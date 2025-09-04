@@ -1,58 +1,218 @@
 <!DOCTYPE html>
-return { imageDataUrl: null, text };
-}
-} catch(err){
-console.error('File processing failed', err);
-return { imageDataUrl: null, text: `[[File processing failed: ${err?.message || err}]]` };
-}
-}
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UPSC / OPSC Mentor</title>
+  <style>
+    :root { --bg:#0b1020; --card:#121a2e; --text:#eef2ff; --muted:#93a4c3; --accent:#5b9dff; --good:#27c084; --bad:#ff5b6e; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Arial; background:var(--bg); color:var(--text); }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 16px; }
+    .card { background:var(--card); border-radius: 14px; padding: 16px; box-shadow: 0 6px 24px rgba(0,0,0,.35); }
+    h1 { font-size: 1.35rem; margin: 0 0 12px; }
+    .muted { color: var(--muted); font-size: .95rem; }
+    label { display:block; margin:14px 0 6px; font-weight: 600; }
+    input, select, textarea { width:100%; padding:12px; border-radius: 10px; border:1px solid #24304f; background:#0f1530; color:var(--text); outline:none; }
+    input[type="number"] { -moz-appearance: textfield; }
+    .row { display:grid; grid-template-columns: 1fr; gap:12px; }
+    @media (min-width:720px){ .row{ grid-template-columns: repeat(2, 1fr); } }
+    button { padding:12px 16px; border:none; border-radius: 12px; font-weight:700; cursor:pointer; background:linear-gradient(135deg, var(--accent), #7bb9ff); color:#081226; }
+    button[disabled]{ opacity:.6; cursor:not-allowed; }
+    .actions { display:flex; gap:10px; flex-wrap:wrap; }
+    .result { margin-top:12px; white-space: pre-wrap; line-height:1.55; }
+    .pill { display:inline-block; padding:7px 10px; border-radius:999px; font-size:.8rem; background:#0f1530; border:1px solid #24304f; color:var(--muted); }
+    .note { font-size: .9rem; margin-top: 10px; color: var(--muted); }
+    .spinner { width:18px; height:18px; border:2px solid rgba(255,255,255,.25); border-top-color:#fff; border-radius:50%; animation:spin .9s linear infinite; display:inline-block; vertical-align:-3px; margin-right:8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .ok { color: var(--good); } .err { color: var(--bad); }
+  </style>
 
+  <!-- PDF + DOCX extractors -->
+  <script defer src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.min.js"></script>
+  <script defer>window.addEventListener('DOMContentLoaded',()=>{ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.worker.min.js'; });</script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>UPSC / OPSC Mentor</h1>
+      <p class="muted">Fill your details. Backend (Netlify Function with OpenAI) will generate a tailored plan.</p>
 
-form.addEventListener('submit', async (e)=>{
-e.preventDefault();
-resultCard.style.display = 'none';
-resultEl.textContent = '';
-statusEl.style.display = 'block';
-statusEl.innerHTML = '<span class="spinner"></span>Generating your plan…';
-submitBtn.disabled = true;
+      <form id="mentorForm">
+        <div class="row">
+          <div>
+            <label for="exam">Target exam</label>
+            <select id="exam" required>
+              <option value="OPSC">OPSC OAS</option>
+              <option value="UPSC">UPSC CSE</option>
+            </select>
+          </div>
+          <div>
+            <label for="age">Age (years)</label>
+            <input id="age" type="number" min="16" max="60" required />
+          </div>
+          <div>
+            <label for="attempts">Attempts already taken</label>
+            <input id="attempts" type="number" min="0" max="10" required />
+          </div>
+          <div>
+            <label for="edu">Highest education</label>
+            <input id="edu" type="text" placeholder="BSc, BTech, MA, etc." />
+          </div>
+          <div>
+            <label for="work">Work status</label>
+            <select id="work">
+              <option value="none">No job</option>
+              <option value="part-time">Part-time job</option>
+              <option value="full-time">Full-time job</option>
+            </select>
+          </div>
+          <div>
+            <label for="hours">Daily study hours available</label>
+            <input id="hours" type="number" step="0.5" min="0" max="16" value="3" required />
+          </div>
+        </div>
 
+        <label for="strengths">Strengths (comma separated)</label>
+        <input id="strengths" type="text" placeholder="Polity, Current Affairs, Writing speed" />
 
-const payload = {
-exam: document.getElementById('exam').value,
-age: Number(document.getElementById('age').value),
-attempts: Number(document.getElementById('attempts').value),
-edu: document.getElementById('edu').value.trim(),
-work: document.getElementById('work').value,
-hours: Number(document.getElementById('hours').value),
-strengths: document.getElementById('strengths').value.trim(),
-weaknesses: document.getElementById('weaknesses').value.trim(),
-notes: document.getElementById('notes').value.trim(),
-};
+        <label for="weaknesses">Weak areas (comma separated)</label>
+        <input id="weaknesses" type="text" placeholder="CSAT, Geography, Economy" />
 
+        <label for="notes">Additional info (resources, health, language, etc.)</label>
+        <textarea id="notes" rows="3" placeholder="Optional"></textarea>
 
-const fileInput = document.getElementById('file');
-const file = fileInput.files?.[0];
-const extracted = await processFile(file);
+        <label for="file">Optional: upload a profile/support file (image/PDF/DOCX/TXT)</label>
+        <input id="file" type="file" accept=".png,.jpg,.jpeg,.pdf,.docx,.txt,.md" />
 
+        <div class="actions" style="margin-top:14px;">
+          <button id="submitBtn" type="submit">Generate my plan</button>
+          <button id="copyResultBtn" type="button" title="Copy result">Copy Result</button>
+          <button id="copyDebugBtn" type="button" title="Copy debug">Copy Debug</button>
+        </div>
+        <div id="status" class="note" style="display:none;"></div>
+      </form>
+    </div>
 
-try{
-const res = await fetch('/.netlify/functions/analyze-student', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ profile: payload, extracted })
-});
-const data = await res.json();
-if(!res.ok || !data?.ok){ throw new Error(data?.error || 'Request failed'); }
-resultEl.innerHTML = data.advice;
-resultCard.style.display = 'block';
-statusEl.innerHTML = '<span class="ok">✓</span> Plan ready.';
-} catch(err){
-console.error(err);
-statusEl.innerHTML = `<span class="err">✗</span> ${err?.message || 'Something went wrong'}`;
-} finally {
-submitBtn.disabled = false;
-}
-});
-</script>
+    <div id="resultCard" class="card" style="margin-top:16px; display:none;">
+      <h2 style="margin:0 0 6px; font-size:1.05rem;">Personalized Guidance</h2>
+      <div id="result" class="result"></div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('mentorForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const statusEl = document.getElementById('status');
+    const resultEl = document.getElementById('result');
+    const resultCard = document.getElementById('resultCard');
+    const copyResultBtn = document.getElementById('copyResultBtn');
+    const copyDebugBtn = document.getElementById('copyDebugBtn');
+
+    let lastDebug = '';
+
+    copyResultBtn.addEventListener('click', async () => {
+      const text = resultEl.innerText || resultEl.textContent || '';
+      if (!text.trim()) return alert('No result to copy yet.');
+      try { await navigator.clipboard.writeText(text); copyResultBtn.textContent='Copied!'; setTimeout(()=>copyResultBtn.textContent='Copy Result', 1200); }
+      catch { alert('Copy failed.'); }
+    });
+
+    copyDebugBtn.addEventListener('click', async () => {
+      const dbg = lastDebug || 'No debug yet.';
+      try { await navigator.clipboard.writeText(dbg); copyDebugBtn.textContent='Copied!'; setTimeout(()=>copyDebugBtn.textContent='Copy Debug', 1200); }
+      catch { alert('Copy failed.'); }
+    });
+
+    async function readAsDataURL(file){
+      return new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(r.result); r.onerror=reject; r.readAsDataURL(file); });
+    }
+    async function readAsText(file){
+      return new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(r.result); r.onerror=reject; r.readAsText(file); });
+    }
+    async function extractFromPdf(file){
+      const ab = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+      let out = '';
+      for (let p = 1; p <= pdf.numPages; p++){
+        const page = await pdf.getPage(p);
+        const txt = await page.getTextContent();
+        out += `\n\n[Page ${p}]\n` + txt.items.map(i => i.str).join(' ');
+      }
+      return out.trim();
+    }
+    async function extractFromDocx(file){
+      const ab = await file.arrayBuffer();
+      const { value } = await window.mammoth.extractRawText({ arrayBuffer: ab });
+      return (value || '').trim();
+    }
+    async function processFile(file){
+      if(!file) return { imageDataUrl:null, text:null };
+      const name = (file.name || '').toLowerCase();
+      const type = (file.type || '').toLowerCase();
+      try{
+        if(type.startsWith('image/')){
+          return { imageDataUrl: await readAsDataURL(file), text: null };
+        } else if(type.includes('pdf') || name.endsWith('.pdf')){
+          return { imageDataUrl: null, text: await extractFromPdf(file) };
+        } else if(name.endsWith('.docx')){
+          return { imageDataUrl: null, text: await extractFromDocx(file) };
+        } else {
+          return { imageDataUrl: null, text: await readAsText(file) };
+        }
+      } catch(err){
+        return { imageDataUrl: null, text: `[[File processing failed: ${err?.message || err}]]` };
+      }
+    }
+
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      resultCard.style.display = 'none';
+      resultEl.textContent = '';
+      statusEl.style.display = 'block';
+      statusEl.innerHTML = '<span class="spinner"></span>Generating your plan…';
+      submitBtn.disabled = true;
+
+      const payload = {
+        exam: document.getElementById('exam').value,
+        age: Number(document.getElementById('age').value),
+        attempts: Number(document.getElementById('attempts').value),
+        edu: document.getElementById('edu').value.trim(),
+        work: document.getElementById('work').value,
+        hours: Number(document.getElementById('hours').value),
+        strengths: document.getElementById('strengths').value.trim(),
+        weaknesses: document.getElementById('weaknesses').value.trim(),
+        notes: document.getElementById('notes').value.trim(),
+      };
+
+      const file = document.getElementById('file').files?.[0];
+      const extracted = await processFile(file);
+
+      try{
+        const res = await fetch('/.netlify/functions/analyze-student', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile: payload, extracted })
+        });
+
+        lastDebug = `Status: ${res.status}\nHeaders: ${[...res.headers].map(([k,v])=>k+': '+v).join('\n')}`;
+        const data = await res.json().catch(()=>({ error:'Invalid JSON from function' }));
+
+        if(!res.ok || !data?.ok){
+          const msg = data?.error || `Request failed (${res.status})`;
+          throw new Error(msg);
+        }
+
+        resultEl.innerHTML = data.advice || 'No response.';
+        resultCard.style.display = 'block';
+        statusEl.innerHTML = '<span class="ok">✓</span> Plan ready.';
+      } catch(err){
+        statusEl.innerHTML = `<span class="err">✗</span> ${err?.message || 'Something went wrong'}`;
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
 </body>
 </html>
