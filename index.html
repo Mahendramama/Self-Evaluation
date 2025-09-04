@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+return { imageDataUrl: null, text };
+}
+} catch(err){
+console.error('File processing failed', err);
+return { imageDataUrl: null, text: `[[File processing failed: ${err?.message || err}]]` };
+}
+}
+
+
+form.addEventListener('submit', async (e)=>{
+e.preventDefault();
+resultCard.style.display = 'none';
+resultEl.textContent = '';
+statusEl.style.display = 'block';
+statusEl.innerHTML = '<span class="spinner"></span>Generating your plan…';
+submitBtn.disabled = true;
+
+
+const payload = {
+exam: document.getElementById('exam').value,
+age: Number(document.getElementById('age').value),
+attempts: Number(document.getElementById('attempts').value),
+edu: document.getElementById('edu').value.trim(),
+work: document.getElementById('work').value,
+hours: Number(document.getElementById('hours').value),
+strengths: document.getElementById('strengths').value.trim(),
+weaknesses: document.getElementById('weaknesses').value.trim(),
+notes: document.getElementById('notes').value.trim(),
+};
+
+
+const fileInput = document.getElementById('file');
+const file = fileInput.files?.[0];
+const extracted = await processFile(file);
+
+
+try{
+const res = await fetch('/.netlify/functions/analyze-student', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ profile: payload, extracted })
+});
+const data = await res.json();
+if(!res.ok || !data?.ok){ throw new Error(data?.error || 'Request failed'); }
+resultEl.innerHTML = data.advice;
+resultCard.style.display = 'block';
+statusEl.innerHTML = '<span class="ok">✓</span> Plan ready.';
+} catch(err){
+console.error(err);
+statusEl.innerHTML = `<span class="err">✗</span> ${err?.message || 'Something went wrong'}`;
+} finally {
+submitBtn.disabled = false;
+}
+});
+</script>
+</body>
+</html>
